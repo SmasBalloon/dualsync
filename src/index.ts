@@ -12,12 +12,13 @@ import { fileURLToPath } from "url";
 
 // Imports des modules
 import { getInstallCommand, getDevCommand } from "./utils/commands.js";
-import { copyDirectory, createRootGitIgnore } from "./utils/files.js";
+import { createRootGitIgnore } from "./utils/files.js";
 import { generateEnvFiles } from "./utils/env.js";
 import { generateDockerCompose } from "./docker/compose.js";
-import { FRONTEND_ADDONS, BACKEND_ADDONS } from "./addons/config.js";
-import { getFrontendAddonsChoices, getBackendAddonsChoices } from "./addons/choices.js";
-import { installAddons } from "./addons/install.js";
+
+// Import du système de templates
+import { fetchTemplate } from "./templates/download.js";
+import { PRESET_INFO, Preset } from "./templates/config.js";
 
 // Imports des commandes
 import { doctorCommand } from "./commands/doctor.js";
@@ -26,7 +27,7 @@ import { makeModuleCommand } from "./commands/make-module.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_NAME = "dualsync";
-const CURRENT_VERSION = "1.2.2";
+const CURRENT_VERSION = "1.3.0";
 
 // Logo ASCII art
 const LOGO = `
@@ -101,6 +102,26 @@ program
       },
       {
         type: "select",
+        name: "frontendPreset",
+        message: "Quel preset frontend veux-tu ?",
+        choices: [
+          {
+            title: `${PRESET_INFO.minimal.emoji} ${PRESET_INFO.minimal.name} - ${PRESET_INFO.minimal.description}`,
+            value: "minimal"
+          },
+          {
+            title: `${PRESET_INFO.standard.emoji} ${PRESET_INFO.standard.name} - ${PRESET_INFO.standard.description}`,
+            value: "standard"
+          },
+          {
+            title: `${PRESET_INFO.full.emoji} ${PRESET_INFO.full.name} - ${PRESET_INFO.full.description}`,
+            value: "full"
+          },
+        ],
+        initial: 1,
+      },
+      {
+        type: "select",
         name: "backend",
         message: "Quel framework backend veux-tu utiliser ?",
         choices: [
@@ -113,6 +134,22 @@ program
           },
           { title: "🔥 Hono - Ultra-léger pour serverless", value: "hono" },
           { title: "🔥 Hono + Prisma - Hono avec ORM", value: "hono-prisma" },
+        ],
+        initial: 0,
+      },
+      {
+        type: "select",
+        name: "backendPreset",
+        message: "Quel preset backend veux-tu ?",
+        choices: [
+          {
+            title: `${PRESET_INFO.minimal.emoji} ${PRESET_INFO.minimal.name} - Framework de base`,
+            value: "minimal"
+          },
+          {
+            title: `${PRESET_INFO.full.emoji} ${PRESET_INFO.full.name} - Avec Swagger, Helmet, JWT, Zod...`,
+            value: "full"
+          },
         ],
         initial: 0,
       },
@@ -149,62 +186,36 @@ program
       return;
     }
 
-    // 2. Questions pour les add-ons frontend
-    const frontendAddonsChoices = getFrontendAddonsChoices(answers.frontend);
-    const frontendAddons = await prompts({
-      type: "multiselect",
-      name: "addons",
-      message: "Quels add-ons frontend veux-tu ajouter ? (Espace pour sélectionner, Entrée pour valider)",
-      choices: frontendAddonsChoices,
-      hint: "- Espace pour sélectionner. Entrée pour confirmer",
-    });
+    const frontendPreset: Preset = answers.frontendPreset || "minimal";
+    const backendPreset: Preset = answers.backendPreset || "minimal";
 
-    // 3. Questions pour les add-ons backend
-    const backendAddonsChoices = getBackendAddonsChoices(answers.backend);
-    const backendAddons = await prompts({
-      type: "multiselect",
-      name: "addons",
-      message: "Quels add-ons backend veux-tu ajouter ? (Espace pour sélectionner, Entrée pour valider)",
-      choices: backendAddonsChoices,
-      hint: "- Espace pour sélectionner. Entrée pour confirmer",
-    });
-
-    const spinner = ora("Création des fichiers...").start();
+    const spinner = ora("Création du projet...").start();
     try {
-      // 4. Créer le dossier principal
+      // 2. Créer le dossier principal
       fs.mkdirSync(name);
 
-      // 5. Copier les dossiers frontend et backend
-      const templatesRoot = path.join(__dirname, "..", "templates");
-      const frontendSource = path.join(
-        templatesRoot,
-        "frontend",
-        answers.frontend
-      );
-      const backendSource = path.join(
-        templatesRoot,
-        "backend",
-        answers.backend
-      );
-
+      // 3. Télécharger les templates depuis GitHub
+      spinner.text = `Téléchargement de ${answers.frontend} (${frontendPreset})...`;
       const frontendDest = path.join(name, "frontend");
-      const backendDest = path.join(name, "backend");
-      copyDirectory(frontendSource, frontendDest);
-      copyDirectory(backendSource, backendDest);
+      await fetchTemplate("frontend", answers.frontend, frontendPreset, frontendDest);
 
-      // 6. Générer docker-compose.yml si une BD est sélectionnée
+      spinner.text = `Téléchargement de ${answers.backend} (${backendPreset})...`;
+      const backendDest = path.join(name, "backend");
+      await fetchTemplate("backend", answers.backend, backendPreset, backendDest);
+
+      // 4. Générer docker-compose.yml si une BD est sélectionnée
       if (answers.database !== "Aucune") {
         generateDockerCompose(name, answers.database);
       }
 
-      // 7. Créer un fichier .gitignore pour le projet
+      // 5. Créer un fichier .gitignore pour le projet
       createRootGitIgnore(name);
 
-      // 8. Générer les fichiers .env pour le frontend et le backend
+      // 6. Générer les fichiers .env pour le frontend et le backend
       generateEnvFiles(name, answers.backend, answers.database);
       spinner.succeed(pc.green("Projet créé avec succès !"));
 
-      // 9. Initialisation Git (optionnel)
+      // 7. Initialisation Git (optionnel)
       const gitPrompt = await prompts({
         type: "confirm",
         name: "initGit",
@@ -223,7 +234,7 @@ program
         }
       }
 
-      // 10. Installation des dépendances (optionnel)
+      // 8. Installation des dépendances (optionnel)
       const installPrompt = await prompts({
         type: "confirm",
         name: "install",
@@ -237,51 +248,17 @@ program
           await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "frontend") });
           await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "backend") });
           installSpinner.succeed("Dépendances installées.");
-
-          // 10b. Installation des add-ons sélectionnés
-          const selectedFrontendAddons = frontendAddons.addons || [];
-          const selectedBackendAddons = backendAddons.addons || [];
-
-          if (selectedFrontendAddons.length > 0 || selectedBackendAddons.length > 0) {
-            const addonsSpinner = ora("Installation des add-ons...").start();
-            try {
-              if (selectedFrontendAddons.length > 0) {
-                await installAddons(name, "frontend", selectedFrontendAddons, pm);
-              }
-              if (selectedBackendAddons.length > 0) {
-                await installAddons(name, "backend", selectedBackendAddons, pm);
-              }
-              addonsSpinner.succeed("Add-ons installés.");
-            } catch (error) {
-              addonsSpinner.fail("Erreur lors de l'installation des add-ons.");
-              console.error(pc.dim(String(error)));
-            }
-          }
         } catch (error) {
           installSpinner.fail("Erreur lors de l'installation des dépendances.");
         }
       }
 
-      // 11. Afficher instructions finales
+      // 9. Afficher instructions finales
       console.log(pc.green("\n✨ Configuration:"));
-      console.log(` Frontend: ${pc.cyan(answers.frontend)}`);
-      console.log(` Backend: ${pc.cyan(answers.backend)}`);
+      console.log(` Frontend: ${pc.cyan(answers.frontend)} ${pc.dim(`(${PRESET_INFO[frontendPreset].name})`)}`);
+      console.log(` Backend: ${pc.cyan(answers.backend)} ${pc.dim(`(${PRESET_INFO[backendPreset].name})`)}`);
       console.log(` Database: ${pc.cyan(answers.database)}`);
       console.log(` Package Manager: ${pc.cyan(answers.packageManager)}`);
-
-      // Afficher les add-ons sélectionnés
-      const selectedFrontendAddonsFinal = frontendAddons.addons || [];
-      const selectedBackendAddonsFinal = backendAddons.addons || [];
-
-      if (selectedFrontendAddonsFinal.length > 0) {
-        const addonNames = selectedFrontendAddonsFinal.map((a: string) => FRONTEND_ADDONS[a]?.name || a).join(", ");
-        console.log(` Frontend Add-ons: ${pc.magenta(addonNames)}`);
-      }
-
-      if (selectedBackendAddonsFinal.length > 0) {
-        const addonNames = selectedBackendAddonsFinal.map((a: string) => BACKEND_ADDONS[a]?.name || a).join(", ");
-        console.log(` Backend Add-ons: ${pc.magenta(addonNames)}`);
-      }
 
       // Afficher info sur les fichiers .env générés
       console.log(`\n${pc.green("🔐 Fichiers .env générés:")}`);
