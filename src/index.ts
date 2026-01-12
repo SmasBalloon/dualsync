@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_NAME = "smash-cli-front-back";
-const CURRENT_VERSION = "1.0.5";
+const CURRENT_VERSION = "1.0.6";
 
 // Fonction pour vérifier les mises à jour
 async function checkForUpdates() {
@@ -339,97 +339,56 @@ function generateDockerCompose(projectName: string, database: string): void {
 }
 
 // Fonction pour générer le contenu YAML
-
 function generateDockerComposeYaml(database: string, config: any): string {
   const envVars = Object.entries(config.env)
-
-    .map(([key, value]) => ` ${key}: ${value}`)
-
+    .map(([key, value]) => `      ${key}: ${value}`)
     .join("\n");
 
   if (database === "PostgreSQL") {
     return `version: '3.8'
 
-
 services:
-
-postgres:
-
-image: ${config.image}
-
-container_name: ${database.toLowerCase()}_container
-
-ports:
-
-- "${config.port}:5432"
-
-environment:
-
+  postgres:
+    image: ${config.image}
+    container_name: ${database.toLowerCase()}_container
+    ports:
+      - "${config.port}:5432"
+    environment:
 ${envVars}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-
-- postgres_data:/var/lib/postgresql/data
-
-restart: unless-stopped
-
-healthcheck:
-
-test: ["CMD-SHELL", "pg_isready -U user"]
-
-interval: 10s
-
-timeout: 5s
-
-retries: 5
-
-
-volumes:
-
-postgres_data:
-
+  postgres_data:
 `;
   } else if (database === "MariaDB") {
     return `version: '3.8'
 
-
 services:
-
-mariadb:
-
-image: ${config.image}
-
-container_name: ${database.toLowerCase()}_container
-
-ports:
-
-- "${config.port}:3306"
-
-environment:
-
+  mariadb:
+    image: ${config.image}
+    container_name: ${database.toLowerCase()}_container
+    ports:
+      - "${config.port}:3306"
+    environment:
 ${envVars}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-
-- mariadb_data:/var/lib/mysql
-
-restart: unless-stopped
-
-healthcheck:
-
-test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-
-interval: 10s
-
-timeout: 5s
-
-retries: 5
-
-
-volumes:
-
-mariadb_data:
-
+  mariadb_data:
 `;
   }
 
