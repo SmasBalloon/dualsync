@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    /* Cible et Environnement */
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ESNext"],
+    
+    /* Sortie */
+    "outDir": "./dist",
+    "rootDir": "./src", // On suppose que ton code est dans un dossier src/
+    
+    /* Rigueur et Sécurité */
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    /* Pour le déploiement */
+    "removeComments": true,
+    "sourceMap": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
