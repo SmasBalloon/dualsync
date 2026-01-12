@@ -1,19 +1,21 @@
 {
-  "name": "smash-cli-front-back",
-  "version": "1.1.0",
-  "description": "",
+  "name": "dualsync",
+  "version": "1.2.2",
+  "description": "CLI pour créer des projets fullstack avec frontend et backend pré-configurés",
   "type": "module",
   "bin": {
-    "smash": "dist/index.js"
+    "dual": "dist/index.js"
   },
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "scripts"
   ],
   "scripts": {
     "build": "tsc",
     "start": "node ./dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
     "commander": "^11.1.0",
