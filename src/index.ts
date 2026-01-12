@@ -10,16 +10,25 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+// Imports des modules
+import { getInstallCommand, getDevCommand } from "./utils/commands.js";
+import { copyDirectory, createRootGitIgnore } from "./utils/files.js";
+import { generateEnvFiles } from "./utils/env.js";
+import { generateDockerCompose } from "./docker/compose.js";
+import { FRONTEND_ADDONS, BACKEND_ADDONS } from "./addons/config.js";
+import { getFrontendAddonsChoices, getBackendAddonsChoices } from "./addons/choices.js";
+import { installAddons } from "./addons/install.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_NAME = "smash-cli-front-back";
-const CURRENT_VERSION = "1.0.9";
+const CURRENT_VERSION = "1.1.0";
 
 // Fonction pour vérifier les mises à jour
 async function checkForUpdates() {
   try {
     const { stdout } = await execa("npm", ["view", PACKAGE_NAME, "version"]);
     const latestVersion = stdout.trim();
-    
+
     if (latestVersion !== CURRENT_VERSION) {
       console.log(pc.yellow(`\n⚠️  Une nouvelle version est disponible : ${pc.bold(latestVersion)} (actuellement: ${CURRENT_VERSION})\n`));
       console.log(pc.cyan("Pour mettre à jour, utilisez l'une de ces commandes :"));
@@ -43,13 +52,12 @@ program
   .action(async (name: string) => {
     // Vérifier les mises à jour
     await checkForUpdates();
-    
+
     console.log(
       pc.cyan(`\n🚀 Bienvenue dans l'assistant de création ${pc.bold(name)}\n`)
     );
 
     // 1. Questions avec prompts
-
     const answers = await prompts([
       {
         type: "select",
@@ -108,19 +116,38 @@ program
       },
     ]);
 
+    // 2. Questions pour les add-ons frontend
+    const frontendAddonsChoices = getFrontendAddonsChoices(answers.frontend);
+    const frontendAddons = await prompts({
+      type: "multiselect",
+      name: "addons",
+      message: "Quels add-ons frontend veux-tu ajouter ? (Espace pour sélectionner, Entrée pour valider)",
+      choices: frontendAddonsChoices,
+      hint: "- Espace pour sélectionner. Entrée pour confirmer",
+    });
+
+    // 3. Questions pour les add-ons backend
+    const backendAddonsChoices = getBackendAddonsChoices(answers.backend);
+    const backendAddons = await prompts({
+      type: "multiselect",
+      name: "addons",
+      message: "Quels add-ons backend veux-tu ajouter ? (Espace pour sélectionner, Entrée pour valider)",
+      choices: backendAddonsChoices,
+      hint: "- Espace pour sélectionner. Entrée pour confirmer",
+    });
+
     const spinner = ora("Création des fichiers...").start();
     try {
-      // 2. Créer le dossier principal
+      // 4. Créer le dossier principal
       fs.mkdirSync(name);
-      // 3. Copier les dossiers frontend et backend
-      // Le dossier templates est au même niveau que dist dans le package npm
+
+      // 5. Copier les dossiers frontend et backend
       const templatesRoot = path.join(__dirname, "..", "templates");
       const frontendSource = path.join(
         templatesRoot,
         "frontend",
         answers.frontend
       );
-
       const backendSource = path.join(
         templatesRoot,
         "backend",
@@ -132,15 +159,19 @@ program
       copyDirectory(frontendSource, frontendDest);
       copyDirectory(backendSource, backendDest);
 
-      // 4. Générer docker-compose.yml si une BD est sélectionnée
+      // 6. Générer docker-compose.yml si une BD est sélectionnée
       if (answers.database !== "Aucune") {
         generateDockerCompose(name, answers.database);
       }
-      // 5. Créer un fichier .gitignore pour le projet
+
+      // 7. Créer un fichier .gitignore pour le projet
       createRootGitIgnore(name);
+
+      // 8. Générer les fichiers .env pour le frontend et le backend
+      generateEnvFiles(name, answers.backend, answers.database);
       spinner.succeed(pc.green("Projet créé avec succès !"));
 
-      // 6. Initialisation Git (optionnel)
+      // 9. Initialisation Git (optionnel)
       const gitPrompt = await prompts({
         type: "confirm",
         name: "initGit",
@@ -159,7 +190,7 @@ program
         }
       }
 
-      // 7. Installation des dépendances (optionnel)
+      // 10. Installation des dépendances (optionnel)
       const installPrompt = await prompts({
         type: "confirm",
         name: "install",
@@ -173,17 +204,58 @@ program
           await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "frontend") });
           await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "backend") });
           installSpinner.succeed("Dépendances installées.");
+
+          // 10b. Installation des add-ons sélectionnés
+          const selectedFrontendAddons = frontendAddons.addons || [];
+          const selectedBackendAddons = backendAddons.addons || [];
+
+          if (selectedFrontendAddons.length > 0 || selectedBackendAddons.length > 0) {
+            const addonsSpinner = ora("Installation des add-ons...").start();
+            try {
+              if (selectedFrontendAddons.length > 0) {
+                await installAddons(name, "frontend", selectedFrontendAddons, pm);
+              }
+              if (selectedBackendAddons.length > 0) {
+                await installAddons(name, "backend", selectedBackendAddons, pm);
+              }
+              addonsSpinner.succeed("Add-ons installés.");
+            } catch (error) {
+              addonsSpinner.fail("Erreur lors de l'installation des add-ons.");
+              console.error(pc.dim(String(error)));
+            }
+          }
         } catch (error) {
           installSpinner.fail("Erreur lors de l'installation des dépendances.");
         }
       }
 
-      // 8. Afficher instructions finales
+      // 11. Afficher instructions finales
       console.log(pc.green("\n✨ Configuration:"));
       console.log(` Frontend: ${pc.cyan(answers.frontend)}`);
       console.log(` Backend: ${pc.cyan(answers.backend)}`);
       console.log(` Database: ${pc.cyan(answers.database)}`);
       console.log(` Package Manager: ${pc.cyan(answers.packageManager)}`);
+
+      // Afficher les add-ons sélectionnés
+      const selectedFrontendAddonsFinal = frontendAddons.addons || [];
+      const selectedBackendAddonsFinal = backendAddons.addons || [];
+
+      if (selectedFrontendAddonsFinal.length > 0) {
+        const addonNames = selectedFrontendAddonsFinal.map((a: string) => FRONTEND_ADDONS[a]?.name || a).join(", ");
+        console.log(` Frontend Add-ons: ${pc.magenta(addonNames)}`);
+      }
+
+      if (selectedBackendAddonsFinal.length > 0) {
+        const addonNames = selectedBackendAddonsFinal.map((a: string) => BACKEND_ADDONS[a]?.name || a).join(", ");
+        console.log(` Backend Add-ons: ${pc.magenta(addonNames)}`);
+      }
+
+      // Afficher info sur les fichiers .env générés
+      console.log(`\n${pc.green("🔐 Fichiers .env générés:")}`);
+      console.log(` ${pc.dim("• " + name + "/backend/.env")} ${pc.cyan("(avec JWT_SECRET, API_KEY, etc.)")}`);
+      console.log(` ${pc.dim("• " + name + "/frontend/.env")} ${pc.cyan("(configuration API)")}`);
+      console.log(` ${pc.dim("• Les fichiers .env.example sont également créés pour le partage")}`);
+
       if (answers.database !== "Aucune") {
         console.log(`\n${pc.yellow("📦 Docker Compose détecté:")}`);
         console.log(` ${pc.dim("cd " + name + " && docker-compose up -d")}\n`);
@@ -209,188 +281,3 @@ program
   });
 
 program.parse(process.argv);
-
-// Fonction pour obtenir la commande d'installation selon le package manager
-function getInstallCommand(pm: string): { cmd: string; args: string[] } {
-  switch (pm) {
-    case "yarn":
-      return { cmd: "yarn", args: [] };
-    case "pnpm":
-      return { cmd: "pnpm", args: ["install"] };
-    case "bun":
-      return { cmd: "bun", args: ["install"] };
-    case "deno":
-      return { cmd: "deno", args: ["install"] };
-    default:
-      return { cmd: "npm", args: ["install"] };
-  }
-}
-
-// Fonction pour obtenir la commande dev selon le package manager
-function getDevCommand(pm: string): string {
-  switch (pm) {
-    case "yarn":
-      return "yarn dev";
-    case "pnpm":
-      return "pnpm dev";
-    case "bun":
-      return "bun run dev";
-    case "deno":
-      return "deno task dev";
-    default:
-      return "npm run dev";
-  }
-}
-
-// Fonction pour copier récursivement les dossiers
-
-function copyDirectory(src: string, dest: string): void {
-  if (!fs.existsSync(src)) {
-    throw new Error(`Source directory not found: ${src}`);
-  }
-
-  fs.mkdirSync(dest, { recursive: true });
-
-  const files = fs.readdirSync(src);
-
-  files.forEach((file: string) => {
-    const srcPath = path.join(src, file);
-
-    const destPath = path.join(dest, file);
-
-    if (fs.lstatSync(srcPath).isDirectory()) {
-      copyDirectory(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  });
-}
-
-// Fonction pour créer un .gitignore à la racine
-
-function createRootGitIgnore(projectName: string): void {
-  const gitIgnoreContent = `node_modules/
-
-dist/
-
-.env
-
-.env.local
-
-.DS_Store
-
-*.log
-
-`;
-
-  fs.writeFileSync(path.join(projectName, ".gitignore"), gitIgnoreContent);
-}
-
-// Fonction pour générer docker-compose.yml
-
-function generateDockerCompose(projectName: string, database: string): void {
-  const dbConfigs: Record<string, any> = {
-    PostgreSQL: {
-      image: "postgres:15-alpine",
-
-      port: 5432,
-
-      env: {
-        POSTGRES_USER: "user",
-
-        POSTGRES_PASSWORD: "password",
-
-        POSTGRES_DB: "my_database",
-      },
-    },
-
-    MariaDB: {
-      image: "mariadb:latest",
-
-      port: 3306,
-
-      env: {
-        MARIADB_ROOT_PASSWORD: "root",
-
-        MARIADB_DATABASE: "my_database",
-
-        MARIADB_USER: "user",
-
-        MARIADB_PASSWORD: "password",
-      },
-    },
-
-    SQLite: null,
-  };
-
-  if (database === "SQLite" || database === "Aucune") {
-    return;
-  }
-
-  const config = dbConfigs[database];
-
-  if (!config) return;
-
-  const dockerCompose = generateDockerComposeYaml(database, config);
-
-  const filePath = path.join(projectName, "docker-compose.yml");
-
-  fs.writeFileSync(filePath, dockerCompose);
-}
-
-// Fonction pour générer le contenu YAML
-function generateDockerComposeYaml(database: string, config: any): string {
-  const envVars = Object.entries(config.env)
-    .map(([key, value]) => `      ${key}: ${value}`)
-    .join("\n");
-
-  if (database === "PostgreSQL") {
-    return `'
-
-services:
-  postgres:
-    image: ${config.image}
-    container_name: ${database.toLowerCase()}_container
-    ports:
-      - "${config.port}:5432"
-    environment:
-${envVars}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
-`;
-  } else if (database === "MariaDB") {
-    return `'
-
-services:
-  mariadb:
-    image: ${config.image}
-    container_name: ${database.toLowerCase()}_container
-    ports:
-      - "${config.port}:3306"
-    environment:
-${envVars}
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  mariadb_data:
-`;
-  }
-
-  return "";
-}
