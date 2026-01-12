@@ -20,8 +20,24 @@ import { getFrontendAddonsChoices, getBackendAddonsChoices } from "./addons/choi
 import { installAddons } from "./addons/install.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PACKAGE_NAME = "smash-cli-front-back";
-const CURRENT_VERSION = "1.1.0";
+const PACKAGE_NAME = "dualsync";
+const CURRENT_VERSION = "1.2.2";
+
+// Logo ASCII art
+const LOGO = `
+${pc.cyan(pc.bold(`    ____              __   _____                  
+   / __ \\__  ______ _/ /  / ___/__  ______  _____
+  / / / / / / / __ \`/ /   \\__ \\/ / / / __ \\/ ___/
+ / /_/ / /_/ / /_/ / /   ___/ / /_/ / / / / /__  
+/_____/\\__,_/\\__,_/_/   /____/\\__, /_/ /_/\\___/  
+                             /____/              `))}
+`;
+
+// Afficher la bannière
+function showBanner() {
+  console.log(LOGO);
+  console.log(`  ${pc.green(pc.bold("DualSync"))} ${pc.dim(`v${CURRENT_VERSION}`)} - CLI fullstack moderne\n`);
+}
 
 // Fonction pour vérifier les mises à jour
 async function checkForUpdates() {
@@ -32,19 +48,25 @@ async function checkForUpdates() {
     if (latestVersion !== CURRENT_VERSION) {
       console.log(pc.yellow(`\n⚠️  Une nouvelle version est disponible : ${pc.bold(latestVersion)} (actuellement: ${CURRENT_VERSION})\n`));
       console.log(pc.cyan("Pour mettre à jour, utilisez l'une de ces commandes :"));
-      console.log(pc.dim("  npm install -g smash-cli-front-back@latest"));
-      console.log(pc.dim("  yarn global add smash-cli-front-back@latest"));
-      console.log(pc.dim("  pnpm add -g smash-cli-front-back@latest"));
-      console.log(pc.dim("  bun install -g smash-cli-front-back@latest\n"));
+      console.log(pc.dim("  npm install -g dualsync@latest"));
+      console.log(pc.dim("  yarn global add dualsync@latest"));
+      console.log(pc.dim("  pnpm add -g dualsync@latest"));
+      console.log(pc.dim("  bun install -g dualsync@latest\n"));
     }
   } catch (error) {
     // Ignorer les erreurs de vérification (offline, etc.)
   }
 }
 
+// Afficher la bannière si aucune commande n'est passée ou si --help
+if (process.argv.length === 2 || process.argv.includes("--help") || process.argv.includes("-h")) {
+  showBanner();
+}
+
 program
   .version(CURRENT_VERSION)
-  .description("Ma CLI personnalisée pour mon duo de frameworks");
+  .description("CLI pour créer des projets fullstack avec frontend et backend pré-configurés")
+  .addHelpText("before", "");
 
 program
   .command("new <name>")
@@ -64,11 +86,11 @@ program
         name: "frontend",
         message: "Quel framework frontend veux-tu utiliser ?",
         choices: [
-          { title: "⚡ SolidJS - Léger et réactif", value: "solidjs" },
-          { title: "🚀 Next.js - Framework React complet", value: "nextjs" },
-          { title: "⚛️ React - La librairie classique", value: "reactjs" },
-          { title: "🖖 Vue.js - Le framework progressif", value: "vuejs" },
-          { title: " Angular - Le framework robuste", value: "angularjs" },
+          { title: "💎 SolidJS - Léger et réactif", value: "solidjs" },
+          { title: "▲ Next.js - Framework React complet", value: "nextjs" },
+          { title: "⚛️  React - La librairie classique", value: "reactjs" },
+          { title: "💚 Vue.js - Le framework progressif", value: "vuejs" },
+          { title: "🅰️  Angular - Le framework robuste", value: "angularjs" },
         ],
         initial: 0,
       },
@@ -77,15 +99,15 @@ program
         name: "backend",
         message: "Quel framework backend veux-tu utiliser ?",
         choices: [
-          { title: "🏗️ NestJS - Framework complet", value: "nestjs" },
-          { title: "🏗️ NestJS + Prisma - Avec ORM", value: "nestjs-prisma" },
+          { title: "🐱 NestJS - Framework complet", value: "nestjs" },
+          { title: "🐱 NestJS + Prisma - Avec ORM", value: "nestjs-prisma" },
           { title: "⚡ Express - Léger et flexible", value: "expressjs" },
           {
             title: "⚡ Express + Prisma - Express avec ORM",
             value: "expressjs-prisma",
           },
-          { title: " hono - Ultra-léger pour serverless", value: "hono" },
-          { title: " hono + Prisma - Hono avec ORM", value: "hono-prisma" },
+          { title: "🔥 Hono - Ultra-léger pour serverless", value: "hono" },
+          { title: "🔥 Hono + Prisma - Hono avec ORM", value: "hono-prisma" },
         ],
         initial: 0,
       },
@@ -96,7 +118,7 @@ program
         choices: [
           { title: "🐬 MariaDB - MySQL compatible", value: "MariaDB" },
           { title: "🐘 PostgreSQL - Robuste et fiable", value: "PostgreSQL" },
-          { title: "📄 SQLite - Léger et embarqué", value: "SQLite" },
+          { title: "🪶 SQLite - Léger et embarqué", value: "SQLite" },
           { title: "❌ Aucune - Pas de BD", value: "Aucune" },
         ],
         initial: 3,
@@ -108,13 +130,19 @@ program
         choices: [
           { title: "📦 npm - Le classique", value: "npm" },
           { title: "🧶 yarn - Rapide et fiable", value: "yarn" },
-          { title: "📦 pnpm - Économe en espace", value: "pnpm" },
-          { title: "⚡ bun - Ultra-rapide", value: "bun" },
+          { title: "🚀 pnpm - Économe en espace", value: "pnpm" },
+          { title: "🥟 bun - Ultra-rapide", value: "bun" },
           { title: "🦕 deno - Moderne et sécurisé", value: "deno" },
         ],
         initial: 0,
       },
     ]);
+
+    // Vérifier si l'utilisateur a annulé
+    if (!answers.frontend || !answers.backend) {
+      console.log(pc.yellow("\n❌ Création annulée.\n"));
+      return;
+    }
 
     // 2. Questions pour les add-ons frontend
     const frontendAddonsChoices = getFrontendAddonsChoices(answers.frontend);
