@@ -11,15 +11,39 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_NAME = "smash-cli-front-back";
+const CURRENT_VERSION = "1.0.5";
+
+// Fonction pour vérifier les mises à jour
+async function checkForUpdates() {
+  try {
+    const { stdout } = await execa("npm", ["view", PACKAGE_NAME, "version"]);
+    const latestVersion = stdout.trim();
+    
+    if (latestVersion !== CURRENT_VERSION) {
+      console.log(pc.yellow(`\n⚠️  Une nouvelle version est disponible : ${pc.bold(latestVersion)} (actuellement: ${CURRENT_VERSION})\n`));
+      console.log(pc.cyan("Pour mettre à jour, utilisez l'une de ces commandes :"));
+      console.log(pc.dim("  npm install -g smash-cli-front-back@latest"));
+      console.log(pc.dim("  yarn global add smash-cli-front-back@latest"));
+      console.log(pc.dim("  pnpm add -g smash-cli-front-back@latest"));
+      console.log(pc.dim("  bun install -g smash-cli-front-back@latest\n"));
+    }
+  } catch (error) {
+    // Ignorer les erreurs de vérification (offline, etc.)
+  }
+}
 
 program
-  .version("1.0.0")
+  .version(CURRENT_VERSION)
   .description("Ma CLI personnalisée pour mon duo de frameworks");
 
 program
   .command("new <name>")
   .description("Créer un nouveau projet")
   .action(async (name: string) => {
+    // Vérifier les mises à jour
+    await checkForUpdates();
+    
     console.log(
       pc.cyan(`\n🚀 Bienvenue dans l'assistant de création ${pc.bold(name)}\n`)
     );
@@ -69,6 +93,19 @@ program
         ],
         initial: 3,
       },
+      {
+        type: "select",
+        name: "packageManager",
+        message: "Quel gestionnaire de packages veux-tu utiliser ?",
+        choices: [
+          { title: "📦 npm - Le classique", value: "npm" },
+          { title: "🧶 yarn - Rapide et fiable", value: "yarn" },
+          { title: "📦 pnpm - Économe en espace", value: "pnpm" },
+          { title: "⚡ bun - Ultra-rapide", value: "bun" },
+          { title: "🦕 deno - Moderne et sécurisé", value: "deno" },
+        ],
+        initial: 0,
+      },
     ]);
 
     const spinner = ora("Création des fichiers...").start();
@@ -103,7 +140,26 @@ program
       createRootGitIgnore(name);
       spinner.succeed(pc.green("Projet créé avec succès !"));
 
-      // 6. Installation des dépendances (optionnel)
+      // 6. Initialisation Git (optionnel)
+      const gitPrompt = await prompts({
+        type: "confirm",
+        name: "initGit",
+        message: "Initialiser un dépôt Git ?",
+        initial: true,
+      });
+      if (gitPrompt.initGit) {
+        const gitSpinner = ora("Initialisation de Git...").start();
+        try {
+          await execa("git", ["init"], { cwd: name });
+          await execa("git", ["add", "."], { cwd: name });
+          await execa("git", ["commit", "-m", "Initial commit"], { cwd: name });
+          gitSpinner.succeed("Dépôt Git initialisé.");
+        } catch (error) {
+          gitSpinner.warn("Git non disponible ou erreur lors de l'initialisation.");
+        }
+      }
+
+      // 7. Installation des dépendances (optionnel)
       const installPrompt = await prompts({
         type: "confirm",
         name: "install",
@@ -111,30 +167,38 @@ program
       });
       if (installPrompt.install) {
         const installSpinner = ora("Installation des packages...").start();
-        await execa("npm", ["install"], { cwd: path.join(name, "frontend") });
-        await execa("npm", ["install"], { cwd: path.join(name, "backend") });
-        installSpinner.succeed("Dépendances installées.");
+        try {
+          const pm = answers.packageManager;
+          const installCmd = getInstallCommand(pm);
+          await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "frontend") });
+          await execa(installCmd.cmd, installCmd.args, { cwd: path.join(name, "backend") });
+          installSpinner.succeed("Dépendances installées.");
+        } catch (error) {
+          installSpinner.fail("Erreur lors de l'installation des dépendances.");
+        }
       }
 
-      // 7. Afficher instructions finales
+      // 8. Afficher instructions finales
       console.log(pc.green("\n✨ Configuration:"));
       console.log(` Frontend: ${pc.cyan(answers.frontend)}`);
       console.log(` Backend: ${pc.cyan(answers.backend)}`);
       console.log(` Database: ${pc.cyan(answers.database)}`);
+      console.log(` Package Manager: ${pc.cyan(answers.packageManager)}`);
       if (answers.database !== "Aucune") {
         console.log(`\n${pc.yellow("📦 Docker Compose détecté:")}`);
         console.log(` ${pc.dim("cd " + name + " && docker-compose up -d")}\n`);
       }
 
+      const devCmd = getDevCommand(answers.packageManager);
       console.log(`\nMaintenant, fais:`);
       console.log(
-        ` ${pc.yellow(`cd ${name}/frontend && npm run dev`)} ${pc.dim(
+        ` ${pc.yellow(`cd ${name}/frontend && ${devCmd}`)} ${pc.dim(
           "(terminal 1)"
         )}`
       );
 
       console.log(
-        ` ${pc.yellow(`cd ${name}/backend && npm run dev`)} ${pc.dim(
+        ` ${pc.yellow(`cd ${name}/backend && ${devCmd}`)} ${pc.dim(
           "(terminal 2)"
         )}\n`
       );
@@ -145,6 +209,38 @@ program
   });
 
 program.parse(process.argv);
+
+// Fonction pour obtenir la commande d'installation selon le package manager
+function getInstallCommand(pm: string): { cmd: string; args: string[] } {
+  switch (pm) {
+    case "yarn":
+      return { cmd: "yarn", args: [] };
+    case "pnpm":
+      return { cmd: "pnpm", args: ["install"] };
+    case "bun":
+      return { cmd: "bun", args: ["install"] };
+    case "deno":
+      return { cmd: "deno", args: ["install"] };
+    default:
+      return { cmd: "npm", args: ["install"] };
+  }
+}
+
+// Fonction pour obtenir la commande dev selon le package manager
+function getDevCommand(pm: string): string {
+  switch (pm) {
+    case "yarn":
+      return "yarn dev";
+    case "pnpm":
+      return "pnpm dev";
+    case "bun":
+      return "bun run dev";
+    case "deno":
+      return "deno task dev";
+    default:
+      return "npm run dev";
+  }
+}
 
 // Fonction pour copier récursivement les dossiers
 
