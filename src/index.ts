@@ -76,16 +76,16 @@ program
       // 2. Créer le dossier principal
       fs.mkdirSync(name);
       // 3. Copier les dossiers frontend et backend
+      // Le dossier templates est au même niveau que dist dans le package npm
+      const templatesRoot = path.join(__dirname, "..", "templates");
       const frontendSource = path.join(
-        __dirname,
-        "templates",
+        templatesRoot,
         "frontend",
         answers.frontend
       );
 
       const backendSource = path.join(
-        __dirname,
-        "templates",
+        templatesRoot,
         "backend",
         answers.backend
       );
