@@ -1,11 +1,13 @@
 {
-  "name": "cli-perso",
+  "name": "smash-cli-front-back",
   "version": "1.0.0",
   "description": "",
   "license": "ISC",
   "author": "",
   "type": "module",
-  "main": "index.js",
+  "bin": {
+    "smash": "./index.ts"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
