@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_NAME = "smash-cli-front-back";
-const CURRENT_VERSION = "1.0.6";
+const CURRENT_VERSION = "1.0.9";
 
 // Fonction pour vérifier les mises à jour
 async function checkForUpdates() {
@@ -345,7 +345,7 @@ function generateDockerComposeYaml(database: string, config: any): string {
     .join("\n");
 
   if (database === "PostgreSQL") {
-    return `version: '3.8'
+    return `'
 
 services:
   postgres:
@@ -368,7 +368,7 @@ volumes:
   postgres_data:
 `;
   } else if (database === "MariaDB") {
-    return `version: '3.8'
+    return `'
 
 services:
   mariadb:
