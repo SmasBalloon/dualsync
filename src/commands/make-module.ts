@@ -3,17 +3,16 @@ import ora from "ora";
 import fs from "fs";
 import path from "path";
 
-interface ModuleTemplate {
-    filename: string;
-    content: string;
-}
-
 function capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function getControllerTemplate(name: string, capitalizedName: string): string {
-    return `import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+// ═══════════════════════════════════════════════════════════════
+// NESTJS TEMPLATES
+// ═══════════════════════════════════════════════════════════════
+
+function getNestControllerTemplate(name: string, capitalizedName: string): string {
+  return `import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
 import { ${capitalizedName}Service } from './${name}.service';
 import { Create${capitalizedName}Dto } from './dto/create-${name}.dto';
 import { Update${capitalizedName}Dto } from './dto/update-${name}.dto';
@@ -50,8 +49,8 @@ export class ${capitalizedName}Controller {
 `;
 }
 
-function getServiceTemplate(name: string, capitalizedName: string): string {
-    return `import { Injectable, NotFoundException } from '@nestjs/common';
+function getNestServiceTemplate(name: string, capitalizedName: string): string {
+  return `import { Injectable, NotFoundException } from '@nestjs/common';
 import { Create${capitalizedName}Dto } from './dto/create-${name}.dto';
 import { Update${capitalizedName}Dto } from './dto/update-${name}.dto';
 
@@ -101,8 +100,8 @@ export class ${capitalizedName}Service {
 `;
 }
 
-function getModuleTemplate(name: string, capitalizedName: string): string {
-    return `import { Module } from '@nestjs/common';
+function getNestModuleTemplate(name: string, capitalizedName: string): string {
+  return `import { Module } from '@nestjs/common';
 import { ${capitalizedName}Controller } from './${name}.controller';
 import { ${capitalizedName}Service } from './${name}.service';
 
@@ -115,8 +114,8 @@ export class ${capitalizedName}Module {}
 `;
 }
 
-function getCreateDtoTemplate(name: string, capitalizedName: string): string {
-    return `export class Create${capitalizedName}Dto {
+function getNestCreateDtoTemplate(name: string, capitalizedName: string): string {
+  return `export class Create${capitalizedName}Dto {
   // Ajoute tes propriétés ici
   // Exemple:
   // @IsString()
@@ -126,76 +125,96 @@ function getCreateDtoTemplate(name: string, capitalizedName: string): string {
 `;
 }
 
-function getUpdateDtoTemplate(name: string, capitalizedName: string): string {
-    return `import { PartialType } from '@nestjs/mapped-types';
+function getNestUpdateDtoTemplate(name: string, capitalizedName: string): string {
+  return `import { PartialType } from '@nestjs/mapped-types';
 import { Create${capitalizedName}Dto } from './create-${name}.dto';
 
 export class Update${capitalizedName}Dto extends PartialType(Create${capitalizedName}Dto) {}
 `;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// EXPRESS TEMPLATES
+// ═══════════════════════════════════════════════════════════════
+
 function getExpressControllerTemplate(name: string, capitalizedName: string): string {
-    return `import { Request, Response } from 'express';
+  return `import { Request, Response, NextFunction } from 'express';
+
+// In-memory storage (remplacer par une vraie DB)
+let ${name}s: any[] = [];
 
 // GET /${name}
-export const getAll${capitalizedName}s = async (req: Request, res: Response) => {
+export const getAll${capitalizedName}s = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implémenter la logique
-    res.json({ message: 'Get all ${name}s' });
+    res.json({ data: ${name}s });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    next(error);
   }
 };
 
 // GET /${name}/:id
-export const get${capitalizedName}ById = async (req: Request, res: Response) => {
+export const get${capitalizedName}ById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    // TODO: Implémenter la logique
-    res.json({ message: \`Get ${name} \${id}\` });
+    const ${name} = ${name}s.find(item => item.id === id);
+    if (!${name}) {
+      return res.status(404).json({ error: '${capitalizedName} not found' });
+    }
+    res.json({ data: ${name} });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    next(error);
   }
 };
 
 // POST /${name}
-export const create${capitalizedName} = async (req: Request, res: Response) => {
+export const create${capitalizedName} = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = req.body;
-    // TODO: Implémenter la logique
-    res.status(201).json({ message: '${capitalizedName} created', data });
+    const new${capitalizedName} = {
+      id: Date.now().toString(),
+      ...req.body,
+      createdAt: new Date().toISOString(),
+    };
+    ${name}s.push(new${capitalizedName});
+    res.status(201).json({ data: new${capitalizedName} });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    next(error);
   }
 };
 
 // PUT /${name}/:id
-export const update${capitalizedName} = async (req: Request, res: Response) => {
+export const update${capitalizedName} = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const data = req.body;
-    // TODO: Implémenter la logique
-    res.json({ message: \`${capitalizedName} \${id} updated\`, data });
+    const index = ${name}s.findIndex(item => item.id === id);
+    if (index === -1) {
+      return res.status(404).json({ error: '${capitalizedName} not found' });
+    }
+    ${name}s[index] = { ...${name}s[index], ...req.body, updatedAt: new Date().toISOString() };
+    res.json({ data: ${name}s[index] });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    next(error);
   }
 };
 
 // DELETE /${name}/:id
-export const delete${capitalizedName} = async (req: Request, res: Response) => {
+export const delete${capitalizedName} = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    // TODO: Implémenter la logique
-    res.json({ message: \`${capitalizedName} \${id} deleted\` });
+    const index = ${name}s.findIndex(item => item.id === id);
+    if (index === -1) {
+      return res.status(404).json({ error: '${capitalizedName} not found' });
+    }
+    const deleted = ${name}s.splice(index, 1);
+    res.json({ data: deleted[0], message: '${capitalizedName} deleted' });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    next(error);
   }
 };
 `;
 }
 
 function getExpressRouteTemplate(name: string, capitalizedName: string): string {
-    return `import { Router } from 'express';
+  return `import { Router } from 'express';
 import {
   getAll${capitalizedName}s,
   get${capitalizedName}ById,
@@ -206,103 +225,263 @@ import {
 
 const router = Router();
 
+/**
+ * @route   GET /${name}
+ * @desc    Get all ${name}s
+ */
 router.get('/', getAll${capitalizedName}s);
+
+/**
+ * @route   GET /${name}/:id
+ * @desc    Get ${name} by ID
+ */
 router.get('/:id', get${capitalizedName}ById);
+
+/**
+ * @route   POST /${name}
+ * @desc    Create a new ${name}
+ */
 router.post('/', create${capitalizedName});
+
+/**
+ * @route   PUT /${name}/:id
+ * @desc    Update ${name} by ID
+ */
 router.put('/:id', update${capitalizedName});
+
+/**
+ * @route   DELETE /${name}/:id
+ * @desc    Delete ${name} by ID
+ */
 router.delete('/:id', delete${capitalizedName});
 
 export default router;
 `;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// HONO TEMPLATES
+// ═══════════════════════════════════════════════════════════════
+
+function getHonoControllerTemplate(name: string, capitalizedName: string): string {
+  return `import { Context } from 'hono';
+
+// In-memory storage (remplacer par une vraie DB)
+let ${name}s: any[] = [];
+
+// GET /${name}
+export const getAll${capitalizedName}s = async (c: Context) => {
+  return c.json({ data: ${name}s });
+};
+
+// GET /${name}/:id
+export const get${capitalizedName}ById = async (c: Context) => {
+  const id = c.req.param('id');
+  const ${name} = ${name}s.find(item => item.id === id);
+  
+  if (!${name}) {
+    return c.json({ error: '${capitalizedName} not found' }, 404);
+  }
+  
+  return c.json({ data: ${name} });
+};
+
+// POST /${name}
+export const create${capitalizedName} = async (c: Context) => {
+  const body = await c.req.json();
+  
+  const new${capitalizedName} = {
+    id: Date.now().toString(),
+    ...body,
+    createdAt: new Date().toISOString(),
+  };
+  
+  ${name}s.push(new${capitalizedName});
+  return c.json({ data: new${capitalizedName} }, 201);
+};
+
+// PUT /${name}/:id
+export const update${capitalizedName} = async (c: Context) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  
+  const index = ${name}s.findIndex(item => item.id === id);
+  
+  if (index === -1) {
+    return c.json({ error: '${capitalizedName} not found' }, 404);
+  }
+  
+  ${name}s[index] = { 
+    ...${name}s[index], 
+    ...body, 
+    updatedAt: new Date().toISOString() 
+  };
+  
+  return c.json({ data: ${name}s[index] });
+};
+
+// DELETE /${name}/:id
+export const delete${capitalizedName} = async (c: Context) => {
+  const id = c.req.param('id');
+  const index = ${name}s.findIndex(item => item.id === id);
+  
+  if (index === -1) {
+    return c.json({ error: '${capitalizedName} not found' }, 404);
+  }
+  
+  const deleted = ${name}s.splice(index, 1);
+  return c.json({ data: deleted[0], message: '${capitalizedName} deleted' });
+};
+`;
+}
+
+function getHonoRouteTemplate(name: string, capitalizedName: string): string {
+  return `import { Hono } from 'hono';
+import {
+  getAll${capitalizedName}s,
+  get${capitalizedName}ById,
+  create${capitalizedName},
+  update${capitalizedName},
+  delete${capitalizedName},
+} from './${name}.controller';
+
+const ${name}Routes = new Hono();
+
+// GET /${name}
+${name}Routes.get('/', getAll${capitalizedName}s);
+
+// GET /${name}/:id
+${name}Routes.get('/:id', get${capitalizedName}ById);
+
+// POST /${name}
+${name}Routes.post('/', create${capitalizedName});
+
+// PUT /${name}/:id
+${name}Routes.put('/:id', update${capitalizedName});
+
+// DELETE /${name}/:id
+${name}Routes.delete('/:id', delete${capitalizedName});
+
+export default ${name}Routes;
+`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN COMMAND
+// ═══════════════════════════════════════════════════════════════
+
 export async function makeModuleCommand(name: string): Promise<void> {
-    console.log(pc.cyan(pc.bold(`\n🔧 Génération du module "${name}"...\n`)));
+  console.log(pc.cyan(pc.bold(`\n🔧 Génération du module "${name}"...\n`)));
 
-    const moduleName = name.toLowerCase();
-    const capitalizedName = capitalize(moduleName);
+  const moduleName = name.toLowerCase();
+  const capitalizedName = capitalize(moduleName);
 
-    // Détecter le type de backend
-    const backendPath = path.join(process.cwd(), "backend");
-    const srcPath = path.join(backendPath, "src");
+  // Détecter le type de backend
+  const backendPath = path.join(process.cwd(), "backend");
+  const srcPath = path.join(backendPath, "src");
 
-    if (!fs.existsSync(backendPath)) {
-        console.log(pc.red("  ❌ Dossier 'backend' non trouvé."));
-        console.log(pc.dim("  Assure-toi d'être à la racine d'un projet DualSync.\n"));
-        process.exit(1);
+  if (!fs.existsSync(backendPath)) {
+    console.log(pc.red("  ❌ Dossier 'backend' non trouvé."));
+    console.log(pc.dim("  Assure-toi d'être à la racine d'un projet DualSync.\n"));
+    process.exit(1);
+  }
+
+  // Détecter le framework backend
+  const packageJsonPath = path.join(backendPath, "package.json");
+  let backendType: "nestjs" | "express" | "hono" = "express";
+
+  if (fs.existsSync(packageJsonPath)) {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+
+    if (deps["@nestjs/core"]) {
+      backendType = "nestjs";
+    } else if (deps["hono"]) {
+      backendType = "hono";
+    } else if (deps["express"]) {
+      backendType = "express";
+    }
+  }
+
+  const frameworkEmoji = {
+    nestjs: "🐱",
+    express: "⚡",
+    hono: "🔥",
+  };
+
+  const spinner = ora(`Création du module ${moduleName} (${frameworkEmoji[backendType]} ${backendType})...`).start();
+
+  try {
+    const modulePath = path.join(srcPath, moduleName);
+    fs.mkdirSync(modulePath, { recursive: true });
+
+    if (backendType === "nestjs") {
+      // ─────────────────────────────────────────────────────────────
+      // NESTJS
+      // ─────────────────────────────────────────────────────────────
+      const dtoPath = path.join(modulePath, "dto");
+      fs.mkdirSync(dtoPath, { recursive: true });
+
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.controller.ts`), getNestControllerTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.service.ts`), getNestServiceTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.module.ts`), getNestModuleTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(dtoPath, `create-${moduleName}.dto.ts`), getNestCreateDtoTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(dtoPath, `update-${moduleName}.dto.ts`), getNestUpdateDtoTemplate(moduleName, capitalizedName));
+
+      spinner.succeed(pc.green(`Module ${moduleName} créé ! ${frameworkEmoji[backendType]}`));
+
+      console.log(pc.cyan("\n  📁 Fichiers créés :"));
+      console.log(pc.dim("  ─────────────────────────────────────────────"));
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.controller.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.service.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.module.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/dto/create-${moduleName}.dto.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/dto/update-${moduleName}.dto.ts`);
+
+      console.log(pc.yellow("\n  ⚠️  N'oublie pas d'importer le module dans app.module.ts :"));
+      console.log(pc.dim(`  import { ${capitalizedName}Module } from './${moduleName}/${moduleName}.module';`));
+      console.log(pc.dim(`  @Module({ imports: [..., ${capitalizedName}Module] })\n`));
+
+    } else if (backendType === "express") {
+      // ─────────────────────────────────────────────────────────────
+      // EXPRESS
+      // ─────────────────────────────────────────────────────────────
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.controller.ts`), getExpressControllerTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.routes.ts`), getExpressRouteTemplate(moduleName, capitalizedName));
+
+      spinner.succeed(pc.green(`Module ${moduleName} créé ! ${frameworkEmoji[backendType]}`));
+
+      console.log(pc.cyan("\n  📁 Fichiers créés :"));
+      console.log(pc.dim("  ─────────────────────────────────────────────"));
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.controller.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.routes.ts`);
+
+      console.log(pc.yellow("\n  ⚠️  N'oublie pas d'ajouter les routes dans ton app :"));
+      console.log(pc.dim(`  import ${moduleName}Routes from './${moduleName}/${moduleName}.routes';`));
+      console.log(pc.dim(`  app.use('/${moduleName}', ${moduleName}Routes);\n`));
+
+    } else if (backendType === "hono") {
+      // ─────────────────────────────────────────────────────────────
+      // HONO
+      // ─────────────────────────────────────────────────────────────
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.controller.ts`), getHonoControllerTemplate(moduleName, capitalizedName));
+      fs.writeFileSync(path.join(modulePath, `${moduleName}.routes.ts`), getHonoRouteTemplate(moduleName, capitalizedName));
+
+      spinner.succeed(pc.green(`Module ${moduleName} créé ! ${frameworkEmoji[backendType]}`));
+
+      console.log(pc.cyan("\n  📁 Fichiers créés :"));
+      console.log(pc.dim("  ─────────────────────────────────────────────"));
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.controller.ts`);
+      console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.routes.ts`);
+
+      console.log(pc.yellow("\n  ⚠️  N'oublie pas d'ajouter les routes dans ton app :"));
+      console.log(pc.dim(`  import ${moduleName}Routes from './${moduleName}/${moduleName}.routes';`));
+      console.log(pc.dim(`  app.route('/${moduleName}', ${moduleName}Routes);\n`));
     }
 
-    // Détecter si c'est NestJS ou Express
-    const packageJsonPath = path.join(backendPath, "package.json");
-    let backendType: "nestjs" | "express" | "hono" = "express";
-
-    if (fs.existsSync(packageJsonPath)) {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-
-        if (deps["@nestjs/core"]) {
-            backendType = "nestjs";
-        } else if (deps["hono"]) {
-            backendType = "hono";
-        }
-    }
-
-    const spinner = ora(`Création du module ${moduleName} (${backendType})...`).start();
-
-    try {
-        if (backendType === "nestjs") {
-            // Créer la structure pour NestJS
-            const modulePath = path.join(srcPath, moduleName);
-            const dtoPath = path.join(modulePath, "dto");
-
-            fs.mkdirSync(modulePath, { recursive: true });
-            fs.mkdirSync(dtoPath, { recursive: true });
-
-            // Créer les fichiers
-            fs.writeFileSync(path.join(modulePath, `${moduleName}.controller.ts`), getControllerTemplate(moduleName, capitalizedName));
-            fs.writeFileSync(path.join(modulePath, `${moduleName}.service.ts`), getServiceTemplate(moduleName, capitalizedName));
-            fs.writeFileSync(path.join(modulePath, `${moduleName}.module.ts`), getModuleTemplate(moduleName, capitalizedName));
-            fs.writeFileSync(path.join(dtoPath, `create-${moduleName}.dto.ts`), getCreateDtoTemplate(moduleName, capitalizedName));
-            fs.writeFileSync(path.join(dtoPath, `update-${moduleName}.dto.ts`), getUpdateDtoTemplate(moduleName, capitalizedName));
-
-            spinner.succeed(pc.green(`Module ${moduleName} créé !`));
-
-            console.log(pc.cyan("\n  📁 Fichiers créés :"));
-            console.log(pc.dim("  ─────────────────────────────────────────────"));
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.controller.ts`);
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.service.ts`);
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.module.ts`);
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/dto/create-${moduleName}.dto.ts`);
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/dto/update-${moduleName}.dto.ts`);
-
-            console.log(pc.yellow("\n  ⚠️  N'oublie pas d'importer le module dans app.module.ts :"));
-            console.log(pc.dim(`  import { ${capitalizedName}Module } from './${moduleName}/${moduleName}.module';`));
-            console.log(pc.dim(`  @Module({ imports: [..., ${capitalizedName}Module] })\n`));
-
-        } else {
-            // Créer la structure pour Express/Hono
-            const modulePath = path.join(srcPath, moduleName);
-
-            fs.mkdirSync(modulePath, { recursive: true });
-
-            fs.writeFileSync(path.join(modulePath, `${moduleName}.controller.ts`), getExpressControllerTemplate(moduleName, capitalizedName));
-            fs.writeFileSync(path.join(modulePath, `${moduleName}.routes.ts`), getExpressRouteTemplate(moduleName, capitalizedName));
-
-            spinner.succeed(pc.green(`Module ${moduleName} créé !`));
-
-            console.log(pc.cyan("\n  📁 Fichiers créés :"));
-            console.log(pc.dim("  ─────────────────────────────────────────────"));
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.controller.ts`);
-            console.log(`  ${pc.dim("•")} backend/src/${moduleName}/${moduleName}.routes.ts`);
-
-            console.log(pc.yellow("\n  ⚠️  N'oublie pas d'ajouter les routes dans ton app :"));
-            console.log(pc.dim(`  import ${moduleName}Routes from './${moduleName}/${moduleName}.routes';`));
-            console.log(pc.dim(`  app.use('/${moduleName}', ${moduleName}Routes);\n`));
-        }
-
-    } catch (error) {
-        spinner.fail(pc.red("Erreur lors de la création du module."));
-        console.error(pc.dim(String(error)));
-        process.exit(1);
-    }
+  } catch (error) {
+    spinner.fail(pc.red("Erreur lors de la création du module."));
+    console.error(pc.dim(String(error)));
+    process.exit(1);
+  }
 }
